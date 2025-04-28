@@ -1,0 +1,73 @@
+# This workflow will get the approved model from model registry and deploy to dev, pre-prod and prod
+
+name: Sagemaker Model Deploy Pipeline SMUS project test 1
+run-name: ${{ github.actor }} is deploying in SMUS project 🚀
+
+on:
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+        type: choice
+        options:
+          - info
+          - warning
+          - debug
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  GitHub-Actions-SMUS-Deploy:
+
+    runs-on: ubuntu-latest
+    env:
+      DEPOY_ACCOUNT: ${{ secrets.DEPLOY_ACCOUNT }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      MODEL_PACKAGE_GROUP_NAME: ${{ secrets.MODEL_PACKAGE_GROUP_NAME }}
+      SAGEMAKER_PROJECT_ID: ${{ secrets.SAGEMAKER_PROJECT_ID }}
+      SAGEMAKER_PROJECT_NAME: ${{ secrets.SAGEMAKER_PROJECT_NAME }}
+      SAGEMAKER_DOMAIN_ARN: ${{ secrets.SAGEMAKER_DOMAIN_ARN }}
+      MODEL_BUCKET_ARN: ${{ secrets.MODEL_BUCKET_ARN }}
+      AMAZON_DATAZONE_DOMAIN: ${{secrets.AMAZON_DATAZONE_DOMAIN}}
+      AMAZON_DATAZONE_SCOPENAME: ${{secrets.AMAZON_DATAZONE_SCOPENAME}}
+      AMAZON_DATAZONE_PROJECT: ${{secrets.AMAZON_DATAZONE_PROJECT}}
+    steps:
+    - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+    - run: echo "🖥️ This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+    - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+    - run: echo "👩🏻‍💻 The commit message for the event -\n ${{ github.event.head_commit.message }}"
+    - uses: actions/checkout@v4
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - name: Configure Dev Account AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+          role-to-assume: ${{secrets.PIPELINE_EXECUTION_IAM_ROLE}}
+          aws-region: ${{secrets.AWS_REGION}}
+    - name: Install dependencies
+      run: |
+        sh install-prerequisites-brew.sh
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: CDK Synth
+      run: |
+        cdk synth --no-lookups
+    - name: Model Deploy to Dev Account
+      run: |
+        cdk deploy --require-approval never
+    - name: CDK list
+      run: |
+        cdk list 
+    - run: echo "💯 This github action job's status is ${{ job.status }}."
