@@ -1,74 +1,213 @@
-# This workflow will build the model and register to model registry.
-# Note: This gihub actions job executes only for changes to specific paths. 
-# Change the paths as you see fit for your use-cases.
-
 name: Sagemaker Pipeline build SMUS project
 run-name: ${{ github.actor }} is building in SMUS 🚀
 
 on:
-  workflow_dispatch:
-    inputs:
-      logLevel:
-        description: 'Log level'
-        required: true
-        default: 'warning'
-        type: choice
-        options:
-          - info
-          - warning
-          - debug
-  push:
-    branches: [ main ]
-    paths:
-      - 'ml_pipelines/**'
-      - 'source_scripts/**'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'ml_pipelines/**'
-      - 'source_scripts/**'
+workflow_dispatch:
+inputs:
+logLevel:
+description: 'Log level'
+required: true
+default: 'warning'
+type: choice
+options:
+- info
+- warning
+- debug
+push:
+branches: [ main ]
+paths:
+- 'ml_pipelines/'
+- 'source_scripts/'
+pull_request:
+branches: [ main ]
+paths:
+- 'ml_pipelines/'
+- 'source_scripts/'
 
 permissions:
-  id-token: write
-  contents: read
+id-token: write
+contents: read
 
 jobs:
-  GitHub-Actions-SMUS-Build:
+GitHub-Actions-SMUS-Build:
+runs-on: ubuntu-latest
 
-    runs-on: ubuntu-latest
-
-    steps:
-    - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
-    - run: echo "🖥️ This job is now running on a ${{ runner.os }} server hosted by GitHub!"
-    - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
-    - run: echo "👩🏻‍💻 The commit message for the event -\n ${{ github.event.head_commit.message }}"
-    - uses: actions/checkout@v4
-    - name: Check out repository code
-      uses: actions/checkout@v4
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-    - name: Configure Dev Account AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-          role-to-assume: ${{secrets.PIPELINE_EXECUTION_IAM_ROLE}}
-          aws-region: ${{secrets.AWS_REGION}}
-    - name: Install pip dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r ./ml_pipelines/requirements.txt
-    - name: Upload dataset to S3
-      run: |
-        python ./ml_pipelines/data/upload_s3_util.py --s3_bucket ${{secrets.ARTIFACT_BUCKET}}
-    - name: List files in the repository
-      run: |
-        ls ${{ github.workspace }}
-    - name: Run Sagemaker Pipeline
-      run: |
-        export PYTHONUNBUFFERED=TRUE
-        export SAGEMAKER_PROJECT_NAME_ID="${{secrets.SAGEMAKER_PROJECT_NAME}}-${{secrets.SAGEMAKER_PROJECT_ID}}"
-        python ./ml_pipelines/run_pipeline.py --module-name training.pipeline     --role-arn ${{secrets.SAGEMAKER_PIPELINE_ROLE_ARN}}     --tags '[{"Key":"sagemaker:project-name", "Value":"${{secrets.SAGEMAKER_PROJECT_NAME}}"}, {"Key":"sagemaker:project-id", "Value":"${{secrets.SAGEMAKER_PROJECT_ID}}"}, {"Key":"AmazonDataZoneDomain", "Value":"${{secrets.AMAZON_DATAZONE_DOMAIN}}"}, {"Key":"AmazonDataZoneScopeName", "Value":"${{secrets.AMAZON_DATAZONE_SCOPENAME}}"}, {"Key":"sagemaker:domain-arn", "Value":"${{secrets.SAGEMAKER_DOMAIN_ARN}}"}, {"Key":"sagemaker:space-arn", "Value":"${{secrets.SAGEMAKER_SPACE_ARN}}"}, {"Key":"AmazonDataZoneProject", "Value":"${{secrets.AMAZON_DATAZONE_PROJECT}}"}]'     --kwargs '{"region":"${{vars.REGION}}","role":"${{secrets.SAGEMAKER_PIPELINE_ROLE_ARN}}","default_bucket":"${{secrets.ARTIFACT_BUCKET}}","pipeline_name":"githubactions-${{secrets.SAGEMAKER_PROJECT_ID}}","model_package_group_name":"git-${{secrets.MODEL_PACKAGE_GROUP_NAME}}","base_job_prefix":"SMUSMLOPS"}'
-        echo "🌟 Success: Create/Update of the SageMaker Pipeline and execution completed."
-    - run: echo "💯 This github action job's status is ${{ job.status }}."
+steps:
+- name: Debug Required Values
+  run: |
+    echo "Checking required values (first 4 chars only, if present):"
+    echo "=================================================="
+    echo "Basic Configuration:"
+    echo "REGION: ${REGION:0:4}*** (Length: ${#REGION})"
+    echo "PIPELINE_EXECUTION_IAM_ROLE: ${SAGEMAKER_PIPELINE_ROLE_ARN:0:4}*** (Length: ${#SAGEMAKER_PIPELINE_ROLE_ARN})"
     
+    echo -e "\nSageMaker Configuration:"
+    echo "SAGEMAKER_PROJECT_NAME: ${SAGEMAKER_PROJECT_NAME:0:4}*** (Length: ${#SAGEMAKER_PROJECT_NAME})"
+    echo "SAGEMAKER_PROJECT_ID: ${SAGEMAKER_PROJECT_ID:0:4}*** (Length: ${#SAGEMAKER_PROJECT_ID})"
+    echo "SAGEMAKER_DOMAIN_ARN: ${SAGEMAKER_DOMAIN_ARN:0:4}*** (Length: ${#SAGEMAKER_DOMAIN_ARN})"
+    echo "SAGEMAKER_SPACE_ARN: ${SAGEMAKER_SPACE_ARN:0:4}*** (Length: ${#SAGEMAKER_SPACE_ARN})"
+    echo "SAGEMAKER_PIPELINE_ROLE_ARN: ${SAGEMAKER_PIPELINE_ROLE_ARN:0:4}*** (Length: ${#SAGEMAKER_PIPELINE_ROLE_ARN})"
+    
+    echo -e "\nDataZone Configuration:"
+    echo "AMAZON_DATAZONE_DOMAIN: ${AMAZON_DATAZONE_DOMAIN:0:4}*** (Length: ${#AMAZON_DATAZONE_DOMAIN})"
+    echo "AMAZON_DATAZONE_SCOPENAME: ${AMAZON_DATAZONE_SCOPENAME:0:4}*** (Length: ${#AMAZON_DATAZONE_SCOPENAME})"
+    echo "AMAZON_DATAZONE_PROJECT: ${AMAZON_DATAZONE_PROJECT:0:4}*** (Length: ${#AMAZON_DATAZONE_PROJECT})"
+    
+    echo -e "\nOther Configuration:"
+    echo "MODEL_PACKAGE_GROUP_NAME: ${MODEL_PACKAGE_GROUP_NAME:0:4}*** (Length: ${#MODEL_PACKAGE_GROUP_NAME})"
+    echo "ARTIFACT_BUCKET: ${ARTIFACT_BUCKET:0:4}*** (Length: ${#ARTIFACT_BUCKET})"
+    
+    echo -e "\nValidating Critical Values..."
+    [[ -z "$REGION" ]] && echo "❌ REGION is missing!" || echo "✅ REGION is set"
+    [[ -z "$PIPELINE_EXECUTION_IAM_ROLE" ]] && echo "❌ PIPELINE_EXECUTION_IAM_ROLE is missing!" || echo "✅ PIPELINE_EXECUTION_IAM_ROLE is set"
+    
+    if [[ -z "$REGION" ]] || [[ -z "$PIPELINE_EXECUTION_IAM_ROLE" ]]; then
+      echo "❌ Critical values are missing. Failing the workflow."
+      exit 1
+    fi
+  env:
+    REGION: ${{ secrets.REGION }}
+    PIPELINE_EXECUTION_IAM_ROLE: ${{ secrets.SAGEMAKER_PIPELINE_ROLE_ARN }}
+    SAGEMAKER_PROJECT_NAME: ${{ secrets.SAGEMAKER_PROJECT_NAME }}
+    SAGEMAKER_PROJECT_ID: ${{ secrets.SAGEMAKER_PROJECT_ID }}
+    AMAZON_DATAZONE_DOMAIN: ${{ secrets.AMAZON_DATAZONE_DOMAIN }}
+    AMAZON_DATAZONE_SCOPENAME: ${{ secrets.AMAZON_DATAZONE_SCOPENAME }}
+    SAGEMAKER_DOMAIN_ARN: ${{ secrets.SAGEMAKER_DOMAIN_ARN }}
+    SAGEMAKER_SPACE_ARN: ${{ secrets.SAGEMAKER_SPACE_ARN }}
+    AMAZON_DATAZONE_PROJECT: ${{ secrets.AMAZON_DATAZONE_PROJECT }}
+    MODEL_PACKAGE_GROUP_NAME: ${{ secrets.MODEL_PACKAGE_GROUP_NAME }}
+    ARTIFACT_BUCKET: ${{ secrets.ARTIFACT_BUCKET }}
+    SAGEMAKER_PIPELINE_ROLE_ARN: ${{ secrets.SAGEMAKER_PIPELINE_ROLE_ARN }}
+
+- name: Job Information
+  if: success()
+  run: |
+    echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+    echo "🖥️ This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+    echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+    echo "👩🏻‍💻 The commit message for the event -\n ${{ github.event.head_commit.message }}"
+
+- name: Check out repository code
+  if: success()
+  uses: actions/checkout@v4
+
+- name: Set up Python 3.11
+  if: success()
+  uses: actions/setup-python@v5
+  with:
+    python-version: "3.11"
+
+- name: Configure AWS Credentials
+  if: success()
+  uses: aws-actions/configure-aws-credentials@v4
+  with:
+    role-to-assume: ${{ secrets.PIPELINE_EXECUTION_IAM_ROLE }}
+    aws-region: ${{ secrets.REGION }}
+    role-session-name: GitHubActionsSession
+    role-duration-seconds: 1200
+
+- name: Verify AWS Credentials
+  if: success()
+  run: |
+    echo "Verifying AWS credentials..."
+    aws sts get-caller-identity
+    echo "AWS Region set to: ${{ secrets.REGION }}"
+
+- name: Install Dependencies
+  if: success()
+  run: |
+    python -m pip install --upgrade pip
+    pip install -r ./ml_pipelines/requirements.txt
+    pip install jq
+
+- name: Upload dataset to S3
+  if: success()
+  run: |
+    echo "Uploading dataset to S3 bucket: ${{ secrets.ARTIFACT_BUCKET }}"
+    python ./ml_pipelines/data/upload_s3_util.py --s3_bucket ${{ secrets.ARTIFACT_BUCKET }}
+
+- name: List Repository Contents
+  if: success()
+  run: |
+    ls ${{ github.workspace }}
+    echo "ML Pipelines directory contents:"
+    ls ${{ github.workspace }}/ml_pipelines
+
+- name: Run Sagemaker Pipeline
+  if: success()
+  run: |
+    # Enable Python unbuffered output
+    export PYTHONUNBUFFERED=TRUE
+    
+    # Set project name ID and print for verification
+    export SAGEMAKER_PROJECT_NAME_ID="${{ secrets.SAGEMAKER_PROJECT_NAME }}-${{ secrets.SAGEMAKER_PROJECT_ID }}"
+    echo "Debug: SAGEMAKER_PROJECT_NAME_ID = ${SAGEMAKER_PROJECT_NAME_ID}"
+    
+    # Create and verify tags JSON
+    TAGS_JSON='[
+      {
+        "Key": "sagemaker:project-name",
+        "Value": "${{ secrets.SAGEMAKER_PROJECT_NAME }}"
+      },
+      {
+        "Key": "sagemaker:project-id",
+        "Value": "${{ secrets.SAGEMAKER_PROJECT_ID }}"
+      },
+      {
+        "Key": "AmazonDataZoneDomain",
+        "Value": "${{ secrets.AMAZON_DATAZONE_DOMAIN }}"
+      },
+      {
+        "Key": "AmazonDataZoneScopeName",
+        "Value": "${{ secrets.AMAZON_DATAZONE_SCOPENAME }}"
+      },
+      {
+        "Key": "sagemaker:domain-arn",
+        "Value": "${{ secrets.SAGEMAKER_DOMAIN_ARN }}"
+      },
+      {
+        "Key": "sagemaker:space-arn",
+        "Value": "${{ secrets.SAGEMAKER_SPACE_ARN }}"
+      },
+      {
+        "Key": "AmazonDataZoneProject",
+        "Value": "${{ secrets.AMAZON_DATAZONE_PROJECT }}"
+      }
+    ]'
+    
+    # Create and verify kwargs JSON
+    KWARGS_JSON='{
+      "region": "${{ secrets.REGION }}",
+      "role": "${{ secrets.SAGEMAKER_PIPELINE_ROLE_ARN }}",
+      "default_bucket": "${{ secrets.ARTIFACT_BUCKET }}",
+      "pipeline_name": "githubactions-${{ secrets.SAGEMAKER_PROJECT_ID }}",
+      "model_package_group_name": "git-${{ secrets.MODEL_PACKAGE_GROUP_NAME }}",
+      "base_job_prefix": "SMUSMLOPS"
+    }'
+    
+    echo "Debug: Verifying JSON structures"
+    echo "First two tags:"
+    echo "$TAGS_JSON" | jq '.[0:2]'
+    echo "kwargs region and pipeline_name:"
+    echo "$KWARGS_JSON" | jq '{region, pipeline_name}'
+    
+    echo "Debug: Running pipeline script with following parameters:"
+    echo "Module name: training.pipeline"
+    echo "Role ARN: ${{ secrets.SAGEMAKER_PIPELINE_ROLE_ARN }}"
+    
+    python ./ml_pipelines/run_pipeline.py \
+      --module-name training.pipeline \
+      --role-arn "${{ secrets.SAGEMAKER_PIPELINE_ROLE_ARN }}" \
+      --tags "$TAGS_JSON" \
+      --kwargs "$KWARGS_JSON"
+    
+    echo "🌟 Success: Create/Update of the SageMaker Pipeline and execution completed."
+
+- name: Job Status
+  if: always()
+  run: |
+    echo "💯 Final job status: ${{ job.status }}"
+    if [ "${{ job.status }}" != "success" ]; then
+      echo "❌ Job failed or had issues"
+      exit 1
+    fi
