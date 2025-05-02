@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   GitHub-Actions-SMUS-Build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
     - name: Debug Required Values
@@ -46,6 +46,7 @@ jobs:
         echo "SAGEMAKER_PROJECT_ID: ${SAGEMAKER_PROJECT_ID:0:20}*** (Length: ${#SAGEMAKER_PROJECT_ID})"
         echo "SAGEMAKER_DOMAIN_ARN: ${SAGEMAKER_DOMAIN_ARN:0:20}*** (Length: ${#SAGEMAKER_DOMAIN_ARN})"
         echo "SAGEMAKER_SPACE_ARN: ${SAGEMAKER_SPACE_ARN:0:20}*** (Length: ${#SAGEMAKER_SPACE_ARN})"
+        echo "SAGEMAKER_UPN_ARN: ${SAGEMAKER_UPN_ARN:0:20}*** (Length: ${#SAGEMAKER_UPN_ARN})"
         echo "SAGEMAKER_PIPELINE_ROLE_ARN: ${SAGEMAKER_PIPELINE_ROLE_ARN:0:20}*** (Length: ${#SAGEMAKER_PIPELINE_ROLE_ARN})"
         echo "SAGEMAKER_DOMAIN_EXECUTION_ROLE: ${SAGEMAKER_DOMAIN_EXECUTION_ROLE:0:20}*** (Length: ${#SAGEMAKER_PIPELINE_ROLE_ARN})"
         
@@ -59,11 +60,11 @@ jobs:
         echo "ARTIFACT_BUCKET: ${ARTIFACT_BUCKET:0:20}*** (Length: ${#ARTIFACT_BUCKET})"
         
         echo -e "\nValidating Critical Values..."
-        [[ -z "$REGION" ]] && echo "❌ REGION is missing!" || echo "✅ REGION is set"
-        [[ -z "$PIPELINE_EXECUTION_IAM_ROLE" ]] && echo "❌ PIPELINE_EXECUTION_IAM_ROLE is missing!" || echo "✅ PIPELINE_EXECUTION_IAM_ROLE is set"
+        [[ -z "$REGION" ]] && echo "REGION is missing!" || echo "REGION is set"
+        [[ -z "$PIPELINE_EXECUTION_IAM_ROLE" ]] && echo "PIPELINE_EXECUTION_IAM_ROLE is missing!" || echo "PIPELINE_EXECUTION_IAM_ROLE is set"
         
         if [[ -z "$REGION" ]] || [[ -z "$PIPELINE_EXECUTION_IAM_ROLE" ]]; then
-          echo "❌ Critical values are missing. Failing the workflow."
+          echo "Critical values are missing. Failing the workflow."
           exit 1
         fi
       env:
@@ -75,6 +76,7 @@ jobs:
         AMAZON_DATAZONE_SCOPENAME: ${{ secrets.AMAZON_DATAZONE_SCOPENAME }}
         SAGEMAKER_DOMAIN_ARN: ${{ secrets.SAGEMAKER_DOMAIN_ARN }}
         SAGEMAKER_SPACE_ARN: ${{ secrets.SAGEMAKER_SPACE_ARN }}
+        SAGEMAKER_UPN_ARN: ${{ secrets.SAGEMAKER_UPN_ARN}}
         AMAZON_DATAZONE_PROJECT: ${{ secrets.AMAZON_DATAZONE_PROJECT }}
         MODEL_PACKAGE_GROUP_NAME: ${{ secrets.MODEL_PACKAGE_GROUP_NAME }}
         ARTIFACT_BUCKET: ${{ secrets.ARTIFACT_BUCKET }}
@@ -84,10 +86,10 @@ jobs:
     - name: Job Information
       if: success()
       run: |
-        echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
-        echo "🖥️ This job is now running on a ${{ runner.os }} server hosted by GitHub!"
-        echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
-        echo "👩🏻‍💻 The commit message for the event -\n ${{ github.event.head_commit.message }}"
+        echo "The job was automatically triggered by a ${{ github.event_name }} event."
+        echo "This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+        echo "The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+        echo "The commit message for the event -\n ${{ github.event.head_commit.message }}"
 
     - name: Check out repository code
       if: success()
@@ -139,11 +141,19 @@ jobs:
       if: success()
       env:
         REGION: ${{ secrets.REGION }}
+        PIPELINE_EXECUTION_IAM_ROLE: ${{ secrets.SAGEMAKER_PIPELINE_ROLE_ARN }}
         SAGEMAKER_PROJECT_NAME: ${{ secrets.SAGEMAKER_PROJECT_NAME }}
         SAGEMAKER_PROJECT_ID: ${{ secrets.SAGEMAKER_PROJECT_ID }}
-        SAGEMAKER_DOMAIN_EXECUTION_ROLE: ${{ secrets.SAGEMAKER_DOMAIN_EXECUTION_ROLE }}
-        ARTIFACT_BUCKET: ${{ secrets.ARTIFACT_BUCKET }}
+        AMAZON_DATAZONE_DOMAIN: ${{ secrets.AMAZON_DATAZONE_DOMAIN }}
+        AMAZON_DATAZONE_SCOPENAME: ${{ secrets.AMAZON_DATAZONE_SCOPENAME }}
+        SAGEMAKER_DOMAIN_ARN: ${{ secrets.SAGEMAKER_DOMAIN_ARN }}
+        SAGEMAKER_SPACE_ARN: ${{ secrets.SAGEMAKER_SPACE_ARN }}
+        SAGEMAKER_UPN_ARN: ${{ secrets.SAGEMAKER_UPN_ARN}}
+        AMAZON_DATAZONE_PROJECT: ${{ secrets.AMAZON_DATAZONE_PROJECT }}
         MODEL_PACKAGE_GROUP_NAME: ${{ secrets.MODEL_PACKAGE_GROUP_NAME }}
+        ARTIFACT_BUCKET: ${{ secrets.ARTIFACT_BUCKET }}
+        SAGEMAKER_PIPELINE_ROLE_ARN: ${{ secrets.SAGEMAKER_PIPELINE_ROLE_ARN }}
+        SAGEMAKER_DOMAIN_EXECUTION_ROLE: ${{ secrets.SAGEMAKER_DOMAIN_EXECUTION_ROLE }}
       run: |
         # Enable Python unbuffered output
         export PYTHONUNBUFFERED=TRUE
@@ -152,16 +162,16 @@ jobs:
         echo "=== Starting Pipeline ==="
         python ./ml_pipelines/run_pipeline.py --module-name training.pipeline \
           --role-arn "$SAGEMAKER_DOMAIN_EXECUTION_ROLE" \
-          --tags '[{"Key":"sagemaker:project-name", "Value":"'"$SAGEMAKER_PROJECT_NAME"'"}, {"Key":"sagemaker:project-id", "Value":"'"$SAGEMAKER_PROJECT_ID"'"}]' \
+          --tags '[{"Key":"sagemaker:project-name", "Value":"'"$SAGEMAKER_PROJECT_NAME"'"}, {"Key":"sagemaker:user-profile-arn", "Value":"'"$SAGEMAKER_UPN_ARN"'"},{"Key":"sagemaker:project-id", "Value":"'"$SAGEMAKER_PROJECT_ID"'"},{"Key":"AmazonDataZoneDomain", "Value":"'"$AMAZON_DATAZONE_DOMAIN"'"}, {"Key":"AmazonDataZoneScopeName", "Value":"'"$AMAZON_DATAZONE_SCOPENAME"'"}, {"Key":"sagemaker:domain-arn", "Value":"'"$SAGEMAKER_DOMAIN_ARN"'"}, {"Key":"sagemaker:space-arn", "Value":"'"$SAGEMAKER_SPACE_ARN"'"}, {"Key":"AmazonDataZoneProject", "Value":"'"$AMAZON_DATAZONE_PROJECT"'"} ]' \
           --kwargs '{"region":"'"$REGION"'","role":"'"$SAGEMAKER_DOMAIN_EXECUTION_ROLE"'","default_bucket":"'"$ARTIFACT_BUCKET"'","pipeline_name":"'"$SAGEMAKER_PROJECT_NAME"'-'"$SAGEMAKER_PROJECT_ID"'","model_package_group_name":"'"$SAGEMAKER_PROJECT_NAME"'-'"$MODEL_PACKAGE_GROUP_NAME"'","base_job_prefix":"'"$SAGEMAKER_PROJECT_NAME"'"}'
         
-        echo "🌟 Success: Create/Update of the SageMaker Pipeline and execution completed."
+        echo "Success: Create/Update of the SageMaker Pipeline and execution completed."
 
     - name: Job Status
       if: always()
       run: |
-        echo "💯 Final job status: ${{ job.status }}"
+        echo "Final job status: ${{ job.status }}"
         if [ "${{ job.status }}" != "success" ]; then
-          echo "❌ Job failed or had issues"
+          echo " Job failed or had issues"
           exit 1
         fi
