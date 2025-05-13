@@ -18,6 +18,7 @@
 import boto3
 import os
 from dotenv import load_dotenv
+print("DEBUG: constants.py is being executed")
 
 load_dotenv()  # take environment variables from GitHub Action
 
@@ -28,7 +29,9 @@ DEPLOY_ACCOUNT = os.getenv("DEPLOY_ACCOUNT", "643732685158")
 PROJECT_NAME = os.getenv("SAGEMAKER_PROJECT_NAME", "My_Project_m93fcul5-marketing")
 PROJECT_ID = os.getenv("SAGEMAKER_PROJECT_ID", "aqaa5fdrbjnlao")
 MODEL_PACKAGE_GROUP_NAME = os.getenv("MODEL_PACKAGE_GROUP_NAME", "git-abalone-smus")
-MODEL_BUCKET_ARN = os.getenv("MODEL_BUCKET_ARN", "arn:aws:s3:::amazon-sagemaker-643732685158-us-west-2-f16345659560")
+MODEL_BUCKET_ARN = "arn:aws:s3:::amazon-sagemaker-643732685158-us-west-2-f16345659560"
+print(f"DEBUG: In constants.py, MODEL_BUCKET_ARN = {MODEL_BUCKET_ARN}")
+MODEL_BUCKET_NAME = os.getenv("MODEL_BUCKET_NAME", "amazon-sagemaker-643732685158-us-west-2-f16345659560")
 ECR_REPO_ARN = os.getenv("ECR_REPO_ARN", None)
 AMAZON_DATAZONE_DOMAIN = os.getenv("AMAZON_DATAZONE_DOMAIN", "dzd_d2hu7wi9b2nro0")
 AMAZON_DATAZONE_SCOPENAME = os.getenv("AMAZON_DATAZONE_SCOPENAME", "dev")
