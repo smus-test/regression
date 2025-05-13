@@ -95,11 +95,11 @@ jobs:
       if: success()
       uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      if: success()
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
+    # - name: Set up Python 3.11
+    #   if: success()
+    #   uses: actions/setup-python@v5
+    #   with:
+    #     python-version: "3.11"
 
     - name: Configure AWS Credentials
       if: success()

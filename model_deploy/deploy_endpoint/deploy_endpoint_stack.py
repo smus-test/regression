@@ -24,6 +24,12 @@ from aws_cdk import (
     aws_iam as iam,
     aws_kms as kms,
     aws_sagemaker as sagemaker,
+    aws_s3 as s3,
+    aws_lambda as lambda_,  # Add this line
+    aws_events as events,
+    aws_events_targets as targets,
+    CfnOutput,
+    Duration,
 )
 
 import constructs
@@ -37,6 +43,7 @@ from config.constants import (
     DEPLOY_ACCOUNT,
     ECR_REPO_ARN,
     MODEL_BUCKET_ARN,
+    MODEL_BUCKET_NAME,
     AMAZON_DATAZONE_DOMAIN,
     AMAZON_DATAZONE_SCOPENAME,
     SAGEMAKER_DOMAIN_ARN,
@@ -110,6 +117,13 @@ class DeployEndpointStack(Stack):
         Tags.of(self).add("AmazonDataZoneScopeName", AMAZON_DATAZONE_SCOPENAME)
         Tags.of(self).add("sagemaker:domain-arn", SAGEMAKER_DOMAIN_ARN)
         Tags.of(self).add("AmazonDataZoneProject", AMAZON_DATAZONE_PROJECT)
+    
+    
+        model_bucket = s3.Bucket.from_bucket_arn(
+            self, 
+            "ModelBucket",
+            bucket_arn=MODEL_BUCKET_ARN
+        )
 
         # iam role that would be used by the model endpoint to run the inference
         model_execution_policy = iam.ManagedPolicy(
@@ -125,8 +139,8 @@ class DeployEndpointStack(Stack):
                         ],
                         effect=iam.Effect.ALLOW,
                         resources=[
-                            MODEL_BUCKET_ARN,
-                            f"{MODEL_BUCKET_ARN}/*",
+                            model_bucket.bucket_arn,
+                            f"{model_bucket.bucket_arn}/*",
                         ],
                     ),
                     iam.PolicyStatement(
@@ -165,78 +179,134 @@ class DeployEndpointStack(Stack):
             ],
         )
 
-        # setup timestamp to be used to trigger the custom resource update event to retrieve latest approved model and to be used with model and endpoint config resources' names
-        now = datetime.now().replace(tzinfo=timezone.utc)
-
-        timestamp = now.strftime("%Y%m%d%H%M%S")
-
-        # get latest approved model package from the model registry (only from a specific model package group)
-        latest_approved_model_package = get_approved_package()
-
-        # Sagemaker Model
-        model_name = f"{MODEL_PACKAGE_GROUP_NAME}-{timestamp}"
-
-        model = sagemaker.CfnModel(
-            self,
-            "Model",
-            execution_role_arn=model_execution_role.role_arn,
-            model_name=model_name,
-            containers=[
-                sagemaker.CfnModel.ContainerDefinitionProperty(
-                    model_package_name=latest_approved_model_package
-                )
-            ],
-        )
-
-        # Sagemaker Endpoint Config
-        endpoint_config_name = f"{MODEL_PACKAGE_GROUP_NAME}-ec-{timestamp}"
-
-        endpoint_config_production_variant = EndpointConfigProductionVariant()
-
-        endpoint_config_production_variant.load_for_stack(self)
-
         # create kms key to be used by the assets bucket
         kms_key = kms.Key(
             self,
             "endpoint-kms-key",
-            description="key used for encryption of data in Amazpn SageMaker Endpoint",
+            description="key used for encryption of data in Amazon SageMaker Endpoint",
             enable_key_rotation=True,
             policy=iam.PolicyDocument(
                 statements=[
+                    # Allow root account full access to the key
                     iam.PolicyStatement(
-                        actions=["kms:*"],
                         effect=iam.Effect.ALLOW,
-                        resources=["*"],
                         principals=[iam.AccountRootPrincipal()],
+                        actions=["kms:*"],
+                        resources=["*"]
                     )
                 ]
             ),
         )
 
-        endpoint_config = sagemaker.CfnEndpointConfig(
+        # Create Lambda role
+        lambda_role = iam.Role(
             self,
-            "EndpointConfig",
-            endpoint_config_name=endpoint_config_name,
-            kms_key_id=kms_key.key_id,
-            production_variants=[
-                endpoint_config_production_variant.get_endpoint_config_production_variant(
-                    model.model_name
-                )
-            ],
+            "ModelDeploymentLambdaRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+        )
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                effect=iam.Effect.ALLOW,
+                resources=[
+                    f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/lambda/*"
+                ]
+            )
         )
 
-        endpoint_config.add_depends_on(model)
-
-        # Sagemaker Endpoint
-        endpoint_name = f"{MODEL_PACKAGE_GROUP_NAME}-{AMAZON_DATAZONE_PROJECT}-{AMAZON_DATAZONE_SCOPENAME}"
-
-        endpoint = sagemaker.CfnEndpoint(
-            self,
-            "Endpoint",
-            endpoint_config_name=endpoint_config.endpoint_config_name,
-            endpoint_name=endpoint_name,
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "sagemaker:CreateModel", "sagemaker:CreateEndpointConfig",
+                    "sagemaker:CreateEndpoint", "sagemaker:UpdateEndpoint",
+                    "sagemaker:DeleteModel", "sagemaker:DeleteEndpointConfig",
+                    "sagemaker:DeleteEndpoint", "sagemaker:DescribeModel",
+                    "sagemaker:DescribeEndpointConfig", "sagemaker:DescribeEndpoint",
+                    "sagemaker:ListModelPackages", "sagemaker:DescribeModelPackageGroup",
+                    "sagemaker:DescribeModelPackage",
+                ],
+                effect=iam.Effect.ALLOW,
+                resources=[
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:model/*",
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:endpoint/*",
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:endpoint-config/*",
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:model-package-group/*",
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:model-package/*"
+                ]
+            )
         )
 
-        endpoint.add_depends_on(endpoint_config)
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["iam:PassRole"],
+                effect=iam.Effect.ALLOW,
+                resources=[model_execution_role.role_arn],
+            )
+        )
 
-        self.endpoint = endpoint
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:ListBucket"],
+                effect=iam.Effect.ALLOW,
+                resources=[MODEL_BUCKET_ARN, f"{MODEL_BUCKET_ARN}/*"],
+            )
+        )
+
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"],
+                effect=iam.Effect.ALLOW,
+                resources=[kms_key.key_arn],
+            )
+        )
+
+        
+    
+        # Create Lambda function
+        endpoint_config_production_variant = EndpointConfigProductionVariant()
+        endpoint_config_production_variant.load_for_stack(self)
+
+        deploy_function = lambda_.Function(
+            self,
+            "ModelDeploymentFunction",
+            runtime=lambda_.Runtime.PYTHON_3_13,
+            handler="index.handler",
+            code=lambda_.Code.from_asset("lambda"),
+            role=lambda_role,
+            environment={
+                "MODEL_PACKAGE_GROUP_NAME": MODEL_PACKAGE_GROUP_NAME,
+                "ENDPOINT_NAME": f"{MODEL_PACKAGE_GROUP_NAME[:20]}-{AMAZON_DATAZONE_PROJECT[:20]}-{AMAZON_DATAZONE_SCOPENAME[:20]}",
+                "EXECUTION_ROLE_ARN": model_execution_role.role_arn,
+                "KMS_KEY_ID": kms_key.key_id,
+                "INSTANCE_TYPE": endpoint_config_production_variant.instance_type,
+                "INITIAL_INSTANCE_COUNT": str(endpoint_config_production_variant.initial_instance_count),
+                "INITIAL_VARIANT_WEIGHT": str(endpoint_config_production_variant.initial_variant_weight),
+                "VARIANT_NAME": endpoint_config_production_variant.variant_name
+            },
+            timeout=Duration.minutes(15),
+            memory_size=1024,
+        )
+        # Create EventBridge rule
+        approval_rule = events.Rule(
+            self,
+            "ModelApprovalRule",
+            event_pattern=events.EventPattern(
+                source=["aws.sagemaker"],
+                detail_type=["SageMaker Model Package State Change"],
+                detail={
+                    "modelPackageGroupName": [MODEL_PACKAGE_GROUP_NAME],
+                    "currentModelPackageStatus": ["Approved"]
+                }
+            )
+        )
+
+        # Add Lambda as target for the rule
+        approval_rule.add_target(targets.LambdaFunction(deploy_function))
+
+        # Output the Lambda function name and ARN
+        self.lambda_function_name = deploy_function.function_name
+        self.lambda_function_arn = deploy_function.function_arn
