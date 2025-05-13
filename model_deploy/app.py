@@ -15,22 +15,33 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+from aws_cdk import App, Environment, DefaultStackSynthesizer
 from deploy_endpoint.deploy_endpoint_stack import DeployEndpointStack
 from config.constants import (
-    DEFAULT_DEPLOYMENT_REGION,
     DEPLOY_ACCOUNT,
-    PROJECT_ID,
-    PROJECT_NAME,
-    AMAZON_DATAZONE_DOMAIN,
+    DEFAULT_DEPLOYMENT_REGION,
     AMAZON_DATAZONE_SCOPENAME,
     AMAZON_DATAZONE_PROJECT
 )
-import aws_cdk as cdk
+import os
 
-app = cdk.App()
+app = App()
 
-dev_env = cdk.Environment(account=DEPLOY_ACCOUNT, region=DEFAULT_DEPLOYMENT_REGION)
+dev_env = Environment(
+    account=DEPLOY_ACCOUNT,
+    region=DEFAULT_DEPLOYMENT_REGION
+)
 
-DeployEndpointStack(app, f"{AMAZON_DATAZONE_SCOPENAME}-{DEPLOY_ACCOUNT}-{AMAZON_DATAZONE_PROJECT}", env=dev_env)
+# Use DefaultStackSynthesizer with just the deploy role specified
+synthesizer = DefaultStackSynthesizer(
+    deploy_role_arn=os.environ.get('SAGEMAKER_PIPELINE_ROLE_ARN')
+)
+
+DeployEndpointStack(
+    app, 
+    f"sagemaker-{AMAZON_DATAZONE_SCOPENAME}-{AMAZON_DATAZONE_PROJECT}", 
+    env=dev_env,
+    synthesizer=synthesizer
+)
 
 app.synth()
