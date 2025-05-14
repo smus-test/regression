@@ -64,8 +64,8 @@ class EndpointConfigProductionVariant(StageYamlDataClassConfig):
     a dataclass to handle mapping yml file configs to python class for endpoint configs
     """
 
-    initial_instance_count: float = 1
-    initial_variant_weight: float = 1
+    initial_instance_count: int = 1
+    initial_variant_weight: int = 1
     instance_type: str = "ml.m5.2xlarge"
     variant_name: str = "AllTraffic"
 
@@ -263,6 +263,9 @@ class DeployEndpointStack(Stack):
                 resources=[kms_key.key_arn],
             )
         )
+        # Add these statements to the lambda_role.add_to_policy section in your stack
+
+        # Permission to add tags to SageMaker resources
         lambda_role.add_to_policy(
             iam.PolicyStatement(
                 actions=[
@@ -307,6 +310,21 @@ class DeployEndpointStack(Stack):
                 ]
             )
         )
+        
+        # CloudWatch Logs permissions (already included but showing for completeness)
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                effect=iam.Effect.ALLOW,
+                resources=[
+                    f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/lambda/*"
+                ]
+            )
+        )
 
         
     
@@ -334,22 +352,42 @@ class DeployEndpointStack(Stack):
             timeout=Duration.minutes(15),
             memory_size=1024,
         )
-        # Create EventBridge rule
-        approval_rule = events.Rule(
+        # Create IAM role for EventBridge
+        events_role = iam.Role(
+            self,
+            "EventBridgeInvokeRole",
+            assumed_by=iam.ServicePrincipal("events.amazonaws.com"),
+            description="Role for EventBridge to invoke Lambda function"
+        )
+        
+        # Add permissions to invoke Lambda
+        events_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["lambda:InvokeFunction"],
+                resources=[deploy_function.function_arn]
+            )
+        )
+        
+        # Create EventBridge Rule using L1 construct
+        rule = events.CfnRule(
             self,
             "ModelApprovalRule",
-            event_pattern=events.EventPattern(
-                source=["aws.sagemaker"],
-                detail_type=["SageMaker Model Package State Change"],
-                detail={
+            description="Rule to trigger Lambda on SageMaker model approval",
+            event_pattern={
+                "source": ["aws.sagemaker"],
+                "detail-type": ["SageMaker Model Package State Change"],
+                "detail": {
                     "ModelPackageGroupName": [MODEL_PACKAGE_GROUP_NAME],
                     "ModelApprovalStatus": ["Approved"]
                 }
-            )
+            },
+            targets=[{
+                "id": "LambdaTarget",
+                "arn": deploy_function.function_arn,
+                "roleArn": events_role.role_arn
+            }]
         )
-
-        # Add Lambda as target for the rule
-        approval_rule.add_target(targets.LambdaFunction(deploy_function))
 
         # Output the Lambda function name and ARN
         self.lambda_function_name = deploy_function.function_name
