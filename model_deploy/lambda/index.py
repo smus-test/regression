@@ -108,12 +108,13 @@ def handler(event, context):
     print(f"Received event: {json.dumps(event)}")
     
     try:
-        if event['detail']['currentModelPackageStatus'] == 'Approved':
+        # Updated to match actual event structure
+        if event['detail']['ModelPackageStatus'] == 'Completed' and event['detail']['ModelApprovalStatus'] == 'Approved':
             print("Model approved event received")
-            model_package_arn = event['detail']['modelPackageArn']
+            model_package_arn = event['detail']['ModelPackageArn']
             return deploy_model(model_package_arn)
         else:
-            print(f"Ignoring model package status: {event['detail']['currentModelPackageStatus']}")
+            print(f"Ignoring model package status: {event['detail']['ModelPackageStatus']}")
             return {
                 'statusCode': 200,
                 'body': json.dumps('No action needed for this status')
