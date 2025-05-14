@@ -263,6 +263,50 @@ class DeployEndpointStack(Stack):
                 resources=[kms_key.key_arn],
             )
         )
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "sagemaker:AddTags",
+                    "sagemaker:ListTags",
+                    "sagemaker:DeleteTags"
+                ],
+                effect=iam.Effect.ALLOW,
+                resources=[
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:model/*",
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:endpoint/*",
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:endpoint-config/*"
+                ]
+            )
+        )
+        
+        # Permission to use ECR images (if using SageMaker containers)
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage",
+                    "ecr:BatchCheckLayerAvailability"
+                ],
+                effect=iam.Effect.ALLOW,
+                resources=["*"]  # You might want to restrict this to specific ECR repositories
+            )
+        )
+        
+        # Additional SageMaker permissions that might be needed
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "sagemaker:InvokeEndpoint",
+                    "sagemaker:DescribeTrainingJob",
+                    "sagemaker:DescribeModelPackageGroup",
+                    "sagemaker:ListModelPackages"
+                ],
+                effect=iam.Effect.ALLOW,
+                resources=[
+                    f"arn:aws:sagemaker:{self.region}:{self.account}:*"
+                ]
+            )
+        )
 
         
     
@@ -298,8 +342,8 @@ class DeployEndpointStack(Stack):
                 source=["aws.sagemaker"],
                 detail_type=["SageMaker Model Package State Change"],
                 detail={
-                    "modelPackageGroupName": [MODEL_PACKAGE_GROUP_NAME],
-                    "currentModelPackageStatus": ["Approved"]
+                    "ModelPackageGroupName": [MODEL_PACKAGE_GROUP_NAME],
+                    "ModelApprovalStatus": ["Approved"]
                 }
             )
         )
