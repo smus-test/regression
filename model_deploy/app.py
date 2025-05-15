@@ -39,7 +39,7 @@ synthesizer = DefaultStackSynthesizer(
 
 DeployEndpointStack(
     app, 
-    f"sagemaker-{AMAZON_DATAZONE_SCOPENAME}-{AMAZON_DATAZONE_PROJECT}", 
+    f"sagemaker-{AMAZON_DATAZONE_PROJECT}", 
     env=dev_env,
     synthesizer=synthesizer
 )
