@@ -342,13 +342,7 @@ class DeployEndpointStack(Stack):
             lambda_function=deploy_function,
             output_path="$.Payload"
         )
-        parse_response = sfn.Pass(
-            self, "ParseResponse",
-            parameters={
-                "endpointName.$": "States.StringToJson($.body).endpointName",
-                "statusCode.$": "$.statusCode"
-            }
-        )
+       
         # Create Lambda task for status checking
         check_status = sfn_tasks.LambdaInvoke(
             self, "CheckEndpointStatus",
@@ -367,11 +361,16 @@ class DeployEndpointStack(Stack):
 
         # Create success and fail states
         succeed = sfn.Succeed(self, "DeploymentSucceeded")
-        fail = sfn.Fail(self, "DeploymentFailed", cause="Endpoint deployment failed")
+        fail = sfn.Fail(
+            self, 
+            "DeploymentFailed",
+            cause="Endpoint deployment failed",
+            error="$.failureReason"
+        )
+
 
         # Create workflow
         definition = deploy_task\
-            .next(parse_response)\
             .next(check_status)\
             .next(
                 choice

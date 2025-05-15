@@ -88,20 +88,17 @@ def deploy_model(model_package_arn):
         
         return {
             'statusCode': 200,
-            'body': json.dumps({
-                'message': 'Model deployment initiated successfully',
-                'modelName': model_name,
-                'endpointConfigName': endpoint_config_name,
-                'endpointName': endpoint_name
-            })
+            'endpointName': endpoint_name,
+            'endpointStatus': 'Creating',
+            'failureReason': ''
         }
     except Exception as e:
         print(f"Error in deploy_model: {str(e)}")
         return {
             'statusCode': 500,
-            'body': json.dumps({
-                'error': str(e)
-            })
+            'endpointName': endpoint_name if 'endpoint_name' in locals() else 'unknown',
+            'endpointStatus': 'Failed',
+            'failureReason': str(e)
         }
 
 def handler(event, context):
@@ -117,13 +114,15 @@ def handler(event, context):
             print(f"Ignoring model package status: {event['detail']['ModelPackageStatus']}")
             return {
                 'statusCode': 200,
-                'body': json.dumps('No action needed for this status')
+                'endpointName': '',
+                'endpointStatus': 'Skipped',
+                'failureReason': 'No action needed for this status'
             }
     except Exception as e:
         print(f"Error in handler: {str(e)}")
         return {
             'statusCode': 500,
-            'body': json.dumps({
-                'error': str(e)
-            })
+            'endpointName': 'unknown',
+            'endpointStatus': 'Failed',
+            'failureReason': str(e)
         }
