@@ -164,7 +164,7 @@ class DeployEndpointStack(Stack):
         self.create_eventbridge_rule(state_machine)
 
         # Create outputs
-        self.create_outputs(deploy_function, state_machine)
+        self.create_outputs(deploy_function,check_status_function, state_machine)
 
     def create_kms_key(self):
         return kms.Key(
@@ -289,6 +289,21 @@ class DeployEndpointStack(Stack):
             resources=[model_execution_role.role_arn],
         ))
 
+        lambda_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                effect=iam.Effect.ALLOW,
+                resources=[
+                f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/lambda/{self.stack_name[:30]}-*",
+                f"arn:aws:logs:{self.region}:{self.account}:log-group:/aws/lambda/{self.stack_name[:30]}-*:*"
+            ]
+            )
+        )
+
         return lambda_role
 
     def create_deploy_lambda(self, lambda_role, model_execution_role, kms_key, endpoint_config):
@@ -299,6 +314,7 @@ class DeployEndpointStack(Stack):
             handler="index.handler",
             code=lambda_.Code.from_asset("lambda/deploy_endpoint"),
             role=lambda_role,
+            function_name=f"{self.stack_name[:30]}-deploy-endpoint", 
             environment={
                 # Model deployment configuration
                 "MODEL_PACKAGE_GROUP_NAME": MODEL_PACKAGE_GROUP_NAME,
@@ -331,6 +347,7 @@ class DeployEndpointStack(Stack):
             handler="index.lambda_handler",
             code=lambda_.Code.from_asset("lambda/check_endpoint_status"),
             role=lambda_role,
+            function_name=f"{self.stack_name[:30]}-check-endpoint",
             timeout=Duration.minutes(5),
             memory_size=128,
         )
@@ -431,11 +448,17 @@ class DeployEndpointStack(Stack):
             }]
         )
 
-    def create_outputs(self, deploy_function, state_machine):
+    def create_outputs(self, deploy_function, check_status_function, state_machine):
         CfnOutput(
-            self, "LambdaFunctionName",
+            self, "DeployFunctionName",
             value=deploy_function.function_name,
             description="Name of the deployment Lambda function"
+        )
+        
+        CfnOutput(
+            self, "CheckStatusFunctionName",
+            value=check_status_function.function_name,
+            description="Name of the check status Lambda function"
         )
         
         CfnOutput(
